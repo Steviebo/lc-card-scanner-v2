@@ -43,7 +43,7 @@ def get_access_token():
 
     return TOKEN_CACHE["token"]
 
-def search(query, limit=20):
+def search(query, limit=200):
     """
     Search eBay for listings matching query (auctions only)
     Returns a list of item summaries
@@ -55,10 +55,12 @@ def search(query, limit=20):
     params = {
         "q": query,
         "category_ids": "183454",  # Trading Card Singles
-        "filter": "buyingOptions:{AUCTION}",
+        "filter": (
+        "itemSpecifics:{name=Rarity,value=Reverse Holo}"
+        ),
         "limit": limit
     }
 
     r = requests.get(BROWSE_URL, headers=headers, params=params)
     r.raise_for_status()
-    return r.json().get("itemSummaries", [])
+    return r.json()
