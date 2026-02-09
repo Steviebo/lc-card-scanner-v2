@@ -1,0 +1,8 @@
+cards:
+  - name: "Charizard"
+    query: "Legendary Collection Reverse Holo Charizard"
+    max_price: 400
+
+  - name: "Alakazam"
+    query: "Legendary Collection Reverse Holo Alakazam"
+    max_price: 120
