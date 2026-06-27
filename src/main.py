@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 import discord
 from ebay.client import search
-from ebay.filters import is_reverse_holo, load_seen_ids, save_seen_ids
+from ebay.filters import is_legendary_collection, is_reverse_holo, load_seen_ids, save_seen_ids
 from ebay.models import Listing
 
 logging.basicConfig(
@@ -47,6 +47,10 @@ def run():
 
             if listing.item_id in seen_ids:
                 continue  # already alerted on this one in a previous run
+
+            if not is_legendary_collection(listing):
+                logger.info("Skipping (not actually Legendary Collection): %s", listing.title)
+                continue
 
             if not is_reverse_holo(listing):
                 logger.info("Skipping (not reverse holo): %s", listing.title)
