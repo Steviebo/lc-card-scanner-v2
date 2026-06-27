@@ -8,7 +8,12 @@ from ebay.models import Listing
 
 logger = logging.getLogger("lc_card_scanner")
 
-DEFAULT_SEEN_PATH = Path(os.getenv("SEEN_ITEMS_PATH", "seen_items.json"))
+# Anchored to this file's directory (src/) by default, so behavior is
+# consistent whether invoked as `python src/main.py` from the repo root
+# or `python main.py` from inside src/. Override with SEEN_ITEMS_PATH
+# for CI/cache setups that want it somewhere specific.
+_DEFAULT_SEEN_FILENAME = Path(__file__).parent.parent / "seen_items.json"
+DEFAULT_SEEN_PATH = Path(os.getenv("SEEN_ITEMS_PATH", str(_DEFAULT_SEEN_FILENAME)))
 
 # Catches "reverse", "rev holo", "RH" as a standalone token (e.g. "Charizard RH")
 _REVERSE_HOLO_HINTS = ("reverse", "rev holo", "rev. holo")

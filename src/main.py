@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 import yaml
 from dotenv import load_dotenv
@@ -14,11 +15,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger("lc_card_scanner")
 
+# Resolve relative to this file, not the caller's cwd -- so `python src/main.py`
+# from the repo root and `python main.py` from inside src/ both work the same.
+CARDS_CONFIG_PATH = Path(__file__).parent / "config" / "cards.yaml"
+
 
 def run():
     load_dotenv()
 
-    with open("src/config/cards.yaml") as f:
+    with open(CARDS_CONFIG_PATH) as f:
         cards = yaml.safe_load(f)["cards"]
 
     seen_ids = load_seen_ids()

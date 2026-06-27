@@ -10,10 +10,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
       - run: pip install -r requirements.txt
-      - run: python src/main.py
+
+      # actions/cache entries are immutable -- a cache hit does NOT get
+      # re-saved automatically. To make seen_items.json persist and update
+      # across every run, the save-key includes the run id (always unique,
+      # so a save always happens at the end of this job), while restore-keys
+      # falls back to the most recent previous run's cache on restore.
+      - name: Restore seen items cache
+        uses: actions/cache@v4
+        with:
+          path: src/seen_items.json
+          key: seen-items-${{ github.run_id }}
+          restore-keys: |
+            seen-items-
+
+      - name: Run scanner
+        working-directory: src
+        run: python main.py
         env:
-          EBAY_OAUTH_TOKEN: ${{ secrets.EBAY_OAUTH_TOKEN }}
+          EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
+          EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
