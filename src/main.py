@@ -6,7 +6,14 @@ from dotenv import load_dotenv
 
 import discord
 from ebay.client import search
-from ebay.filters import is_legendary_collection, is_reverse_holo, load_seen_ids, save_seen_ids
+from ebay.filters import (
+    CONFIDENCE_HIGH,
+    CONFIDENCE_LOW,
+    is_reverse_holo,
+    legendary_collection_confidence,
+    load_seen_ids,
+    save_seen_ids,
+)
 from ebay.models import Listing
 
 logging.basicConfig(
@@ -29,6 +36,7 @@ def run():
     seen_ids = load_seen_ids()
     new_seen_ids = set(seen_ids)
     deals_found = 0
+    low_confidence_candidates = []  # collected across all cards, sent as one batch at the end
 
     for card in cards:
         name = card.get("name", card["query"])
@@ -48,7 +56,8 @@ def run():
             if listing.item_id in seen_ids:
                 continue  # already alerted on this one in a previous run
 
-            if not is_legendary_collection(listing):
+            confidence = legendary_collection_confidence(listing)
+            if confidence == "none":
                 logger.info("Skipping (not actually Legendary Collection): %s", listing.title)
                 continue
 
@@ -60,7 +69,13 @@ def run():
                 logger.info("Skipping (no price): %s", listing.title)
                 continue
 
-            if listing.price < card["max_price"]:
+            if listing.price >= card["max_price"]:
+                # Still mark non-deals as seen so we don't re-check them
+                # against the title/price filters every single run.
+                new_seen_ids.add(listing.item_id)
+                continue
+
+            if confidence == CONFIDENCE_HIGH:
                 logger.info(
                     "[DEAL] %s -- $%s -- %s -- %s",
                     listing.title, listing.price, listing.buying_options, listing.url
@@ -77,10 +92,20 @@ def run():
                     # Only mark as seen if we actually managed to alert on it,
                     # so a Discord outage doesn't silently swallow a deal.
                     new_seen_ids.add(listing.item_id)
-            else:
-                # Still mark non-deals as seen so we don't re-check them
-                # against the title/price filters every single run.
-                new_seen_ids.add(listing.item_id)
+            else:  # CONFIDENCE_LOW
+                logger.info(
+                    "[LOW-CONFIDENCE] %s -- $%s -- %s",
+                    listing.title, listing.price, listing.url
+                )
+                low_confidence_candidates.append(listing)
+
+    if low_confidence_candidates:
+        sent_listings = discord.send_low_confidence_batch(low_confidence_candidates)
+        for listing in sent_listings:
+            # Only mark as seen the ones that actually made it to Discord,
+            # same reasoning as high-confidence deals above.
+            new_seen_ids.add(listing.item_id)
+        deals_found += len(sent_listings)
 
     save_seen_ids(new_seen_ids)
     logger.info("Scan complete. %s new deal(s) sent.", deals_found)
