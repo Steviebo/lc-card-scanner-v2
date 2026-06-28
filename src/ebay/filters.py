@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Set
 
@@ -18,6 +19,24 @@ DEFAULT_SEEN_PATH = Path(os.getenv("SEEN_ITEMS_PATH", str(_DEFAULT_SEEN_FILENAME
 # Catches "reverse", "rev holo", "RH" as a standalone token (e.g. "Charizard RH")
 _REVERSE_HOLO_HINTS = ("reverse", "rev holo", "rev. holo")
 
+# The 2002 WOTC Legendary Collection set has 110 cards total, so every
+# genuine card number in that set is "<n>/110". This is a much more
+# reliable signal than matching the word "Legendary," which also appears
+# in unrelated sets (Legendary Treasures, Legendary Shiny Collection,
+# generic "Legendary set" listings, etc.) that flood search results.
+_LC_CARD_NUMBER_RE = re.compile(r"\b\d{1,3}\s*/\s*110\b")
+
+# Other sets that share the word "Legendary" (or "Collection") with the
+# real Legendary Collection, seen flooding search results in practice.
+# Title containing any of these is treated as a hard exclusion, even if
+# the /110 pattern or "reverse holo" also matches -- these phrases don't
+# appear in genuine Legendary Collection listings.
+_IMPOSTOR_SET_HINTS = (
+    "legendary treasures",
+    "shiny collection",
+    "treasures reverse",
+)
+
 
 def is_reverse_holo(listing: Listing) -> bool:
     """Best-effort check that a listing title indicates a reverse holo.
@@ -32,6 +51,52 @@ def is_reverse_holo(listing: Listing) -> bool:
     # Match "RH" as a standalone word/token, not as a substring of other words
     tokens = title.replace("/", " ").replace("-", " ").split()
     return "rh" in tokens
+
+
+# Exact phrase match for the genuine set name, allowing "LegendaryCollection"
+# (no space) and "Legendary Col Collection" typos seen in real listings.
+_LC_PHRASE_RE = re.compile(r"legendary\s*col(?:lection)?\b.{0,20}?collection|legendary\s*collection")
+
+
+# Exact phrase match for the genuine set name, allowing "LegendaryCollection"
+# (no space) and "Legendary Col Collection" typos seen in real listings.
+_LC_PHRASE_RE = re.compile(r"legendary\s*col(?:lection)?\b.{0,20}?collection|legendary\s*collection")
+
+# Confidence levels for set matching, ordered weakest to strongest.
+CONFIDENCE_NONE = "none"        # rejected outright (impostor set, or no signal at all)
+CONFIDENCE_LOW = "low"          # matched on "Legendary Collection" phrase only
+CONFIDENCE_HIGH = "high"        # matched on the distinctive "<n>/110" card numbering
+
+
+def legendary_collection_confidence(listing: Listing) -> str:
+    """Grade how confident we are that a listing is genuinely from the
+    2002 Legendary Collection set, not a lookalike (Legendary Treasures,
+    Legendary Shiny Collection, etc.) that just shares the word "Legendary."
+
+    Returns one of CONFIDENCE_HIGH, CONFIDENCE_LOW, or CONFIDENCE_NONE.
+    HIGH is reserved for the set's distinctive "<n>/110" numbering, which
+    is rarely produced by anything else. LOW covers listings that mention
+    "Legendary Collection" by name but don't show a parseable card number
+    in the title (e.g. the seller wrote the card name only) -- still
+    plausible, but not as certain as a numbered match.
+    """
+    title = listing.title.lower()
+
+    if any(hint in title for hint in _IMPOSTOR_SET_HINTS):
+        return CONFIDENCE_NONE
+
+    if _LC_CARD_NUMBER_RE.search(title):
+        return CONFIDENCE_HIGH
+
+    if _LC_PHRASE_RE.search(title):
+        return CONFIDENCE_LOW
+
+    return CONFIDENCE_NONE
+
+
+def is_legendary_collection(listing: Listing) -> bool:
+    """Backwards-compatible boolean wrapper: True for HIGH or LOW confidence."""
+    return legendary_collection_confidence(listing) != CONFIDENCE_NONE
 
 
 def load_seen_ids(path: Path = DEFAULT_SEEN_PATH) -> Set[str]:
