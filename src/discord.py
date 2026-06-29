@@ -15,8 +15,13 @@ _EMBED_DESCRIPTION_LIMIT = 4096
 _MAX_LINES_PER_BATCH = 20  # keep batches readable even well under the char limit
 
 
-def send_deal(title, price, url, image_url=None, currency="USD"):
+def send_deal(title, price, url, image_url=None, currency="USD", market_price=None):
     """Post a single high-confidence deal alert to Discord, with image.
+
+    If market_price is provided (not None), adds a "Market Price" field
+    showing the comparison and percent savings, e.g. "$400.00 ~25% Savings!"
+    If the listing price is actually >= market price, shows the delta
+    plainly instead of claiming a (false) savings.
 
     Never raises -- a Discord outage or rate limit should not crash the scan
     or stop other deals from being processed and recorded as seen.
@@ -24,18 +29,41 @@ def send_deal(title, price, url, image_url=None, currency="USD"):
     if not WEBHOOK_URL:
         raise RuntimeError("Missing DISCORD_WEBHOOK_URL")
 
+    fields = [
+        {"name": "Price", "value": f"${price} {currency}".strip(), "inline": True}
+    ]
+
+    market_field = _format_market_price_field(price, market_price, currency)
+    if market_field:
+        fields.append(market_field)
+
     embed = {
         "title": title,
         "url": url,
-        "fields": [
-            {"name": "Price", "value": f"${price} {currency}".strip(), "inline": True}
-        ]
+        "fields": fields,
     }
 
     if image_url:
         embed["image"] = {"url": image_url}
 
     return _post_with_retries({"embeds": [embed]}, label=title)
+
+
+def _format_market_price_field(listing_price, market_price, currency):
+    """Build the 'Market Price' embed field, or None if we have nothing to show."""
+    if market_price is None or market_price <= 0:
+        return None
+
+    diff_pct = (market_price - listing_price) / market_price * 100
+
+    if diff_pct > 0:
+        value = f"${market_price:.2f} {currency} (~{diff_pct:.0f}% Savings!)"
+    elif diff_pct < 0:
+        value = f"${market_price:.2f} {currency} ({abs(diff_pct):.0f}% above market)"
+    else:
+        value = f"${market_price:.2f} {currency} (at market price)"
+
+    return {"name": "Market Price", "value": value, "inline": True}
 
 
 def send_low_confidence_batch(listings):
@@ -62,7 +90,14 @@ def send_low_confidence_batch(listings):
         lines = []
         for listing in batch:
             price_str = f"${listing.price} {listing.currency or 'USD'}".strip()
-            lines.append(f"[{listing.title}]({listing.url}) -- {price_str}")
+            suffix = ""
+            if listing.market_price and listing.market_price > 0:
+                diff_pct = (listing.market_price - listing.price) / listing.market_price * 100
+                if diff_pct > 0:
+                    suffix = f" -- market ~${listing.market_price:.2f} ({diff_pct:.0f}% savings)"
+                else:
+                    suffix = f" -- market ~${listing.market_price:.2f}"
+            lines.append(f"[{listing.title}]({listing.url}) -- {price_str}{suffix}")
 
         description = "\n".join(lines)
         if len(description) > _EMBED_DESCRIPTION_LIMIT:

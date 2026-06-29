@@ -5,6 +5,7 @@ import yaml
 from dotenv import load_dotenv
 
 import discord
+import pricing
 from ebay.client import search
 from ebay.filters import (
     CONFIDENCE_HIGH,
@@ -75,6 +76,9 @@ def run():
                 new_seen_ids.add(listing.item_id)
                 continue
 
+            price_result = pricing.get_market_price(listing.title)
+            listing.market_price = price_result.market_price
+
             if confidence == CONFIDENCE_HIGH:
                 logger.info(
                     "[DEAL] %s -- $%s -- %s -- %s",
@@ -86,6 +90,7 @@ def run():
                     url=listing.url,
                     image_url=listing.image_url,
                     currency=listing.currency or "USD",
+                    market_price=listing.market_price,
                 )
                 if sent:
                     deals_found += 1

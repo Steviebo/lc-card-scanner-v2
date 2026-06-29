@@ -13,6 +13,7 @@ class Listing:
     currency: Optional[str]
     buying_options: str
     image_url: Optional[str]
+    market_price: Optional[float] = None  # populated later via pricing.get_market_price(), if available
 
     @classmethod
     def from_item_summary(cls, item: dict) -> "Listing":
